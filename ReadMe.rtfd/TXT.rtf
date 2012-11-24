@@ -1,0 +1,124 @@
+{\rtf1\ansi\ansicpg1252\cocoartf1187\cocoasubrtf340
+{\fonttbl\f0\fswiss\fcharset0 Helvetica;\f1\fnil\fcharset0 LucidaGrande;\f2\fmodern\fcharset0 Courier;
+}
+{\colortbl;\red255\green255\blue255;\red26\green26\blue26;\red6\green51\blue100;}
+\margl1440\margr1440\vieww17900\viewh15260\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural
+
+\f0\fs24 \cf0 This sample project goes along with my post on my blog The Powers of Observation:\
+\
+	{\field{\*\fldinst{HYPERLINK "http://subjectiveobserver.wordpress.com/2012/11/24/automatic-for-the-people/"}}{\fldrslt http://subjectiveobserver.wordpress.com/2012/11/24/automatic-for-the-people/}}\
+\
+The code is released under the MIT license. See here for details: {\field{\*\fldinst{HYPERLINK "http://opensource.org/licenses/mit-license.php"}}{\fldrslt http://opensource.org/licenses/mit-license.php}}\
+\
+To guard against bit rot, the entirety of the post is reproduced below.\
+\
+\'97 Andrew Pontious\
+11/24/2012\
+\
+\pard\pardeftab720\sa140
+
+\f1\b\fs40 \cf2 Automatic for the\'a0People\
+\pard\pardeftab720\sa300
+
+\fs26 \cf2 UI Automation
+\b0  is a iOS framework, introduced in 2010, that (not surprisingly) lets you set up automated tests for your Cocoa application user interface.\
+It\'92s also something, as several listeners pointed out, that I completely neglected to mention in my {\field{\*\fldinst{HYPERLINK "http://www.edgecasesshow.com/06-you-cant-run-a-script-to-test-feel.html"}}{\fldrslt \cf3 \ul \ulc3 recent podcast episode}} on automated tests, because I hadn\'92t heard about it before myself.\
+Gadzooks! Mea culpa!\
+To find out more, I had a look at the {\field{\*\fldinst{HYPERLINK "https://developer.apple.com/library/ios/documentation/DeveloperTools/Conceptual/InstrumentsUserGuide/UsingtheAutomationInstrument/UsingtheAutomationInstrument.html#//apple_ref/doc/uid/TP40004652-CH20-SW1"}}{\fldrslt \cf3 \ul \ulc3 Automated UI Testing}} section of the Instruments User Guide, and I watched the 2012 WWDC session {\field{\*\fldinst{HYPERLINK "https://developer.apple.com/videos/wwdc/2010/?id=306"}}{\fldrslt \cf3 \ul \ulc3 \'93Automating User Interface Testing with Instruments\'94}} (requires ADC account).
+\fs22 \cf3 \super 1
+\fs26 \cf2 \nosupersub \
+As it says in the WWDC video, UI Automation wasn\'92t {\field{\*\fldinst{HYPERLINK "http://www.youtube.com/watch?v=tyBnrmpuhHE"}}{\fldrslt \cf3 \ul \ulc3 built for me}}. It was made for QA automation engineers. (Specfically, Apple\'92s own QA automation engineers.) So it doesn\'92t make use of the compiler infrastructure like Xcode\'92s unit tests do. Instead of writing your tests in Objective-C, you write them in JavaScript, which takes a bit of getting used to when you haven\'92t written any JavaScript in over 10 years.
+\fs22 \cf3 \super 2
+\fs26 \cf2 \nosupersub \
+I\'92ve tried it out now. There\'92s a lot to like. But there are some gotchas, timing issues still crop up, and in the bigger picture, I have the same doubts about them as I do about regular unit tests.\
+
+\b Getting Started
+\b0 \uc0\u8232 I used an Xcode project created from the template Master-Detail Application, with Core Data thrown in for good measure. If you remember, that project has a table with a plus button, which, when pushed, adds a row with the current time:\
+\pard\pardeftab720\sa300
+
+\f0\fs24 \cf0 {{\NeXTGraphic tableadd.png \width6440 \height11400 \noorient
+}¬}\pard\pardeftab720\sa300
+
+\f1\fs26 \cf2 \
+There\'92s no minus button, but when you slide leftward on a row with your finger, a Delete button appears which lets you delete that row:\
+\pard\pardeftab720\sa300
+
+\f0\fs24 \cf0 {{\NeXTGraphic tabledelete.png \width6440 \height11400 \noorient
+}¬}\pard\pardeftab720\sa300
+
+\f1\fs26 \cf2 \
+So I put together two UI Automation tests for those bits of functionality.\
+You access the controls/views/etc. of your application through a UI accessibility element hierarchy. I had been afraid that this accessibility layer might diverge from the actual Cocoa controls in important ways, but they seem to be the same, at least for my two simple tests.\
+
+\b The Tests Themselves
+\b0 \uc0\u8232 For the \'93add row\'94 test, I needed to add an accessibility label to the plus button, which wasn\'92t there in the original Objective-C template code:\
+\pard\pardeftab720\sa300
+
+\f2 \cf2 addButton.accessibilityLabel = @"Add Entry";
+\f1 \
+In my JavaScript code, I access that button through its accessibility label, and tap it:\
+
+\f2 var addButton = UIATarget.localTarget().frontMostApp().navigationBar().buttons()["Add Entry"]\uc0\u8232 addButton.tap()
+\f1 \
+You never need to work in screen or view coordinates of any sort, which is a relief. If you don\'92t want to find the element by its accessibility label, you can also do so through its subview index.\
+For the \'93delete row\'94 test, I access the last row of the table:\
+
+\f2 var tableView = UIATarget.localTarget().frontMostApp().mainWindow().tableViews()[0]\uc0\u8232 var lastRow = tableView.cells()[tableView.cells().length -1]
+\f1 \
+In addition to tapping and a bunch of other useful actions, there\'92s a specific action you can invoke to simulate \'93flicking\'94. What\'92s nice is that, even here, you don\'92t need to attempt to calculate view coordinates. Instead, you use a zero-to-one coordinate system, where \{x:0.0, y:0.0\} is the top left and \{x:1.0, y:1.0\} is the bottom right. (But don\'92t actually use 1.0 for a view that spans the width or height of the entire device, because that\'92s an invalid offscreen coordinate.) So here\'92s what I do:\
+
+\f2 lastRow.flickInsideWithOptions(\{startOffset:\{x:0.9, y:0.5\}, endOffset:\{x:0.0, y:0.5\}\})
+\f1 \
+Now, on the visible screen, the button that appears in the \'93flicked\'94 row just says \'93Delete\'94. But in the accessibility world, it\'92s called \'93Confirm Deletion for \{name of cell\}\'94. So to get a reference to that button, you need to do something like this:\
+
+\f2 var deleteButton = lastRow.buttons().firstWithPredicate("name beginswith 'Confirm Deletion'")\uc0\u8232 deleteButton.tap()
+\f1 \
+The attempt to get a reference to that button actually triggers another cool feature of UI Automation: timeouts. If the button doesn\'92t exist when your code first asks for it, it waits by default for 5 seconds before giving up. That\'92s very handy (and also something you can extend to a longer timeout if necessary), but unfortunately doesn\'92t cover all cases.\
+For the \'93add row\'94 test, I check, after clicking the plus button, that the row count has increased by 1. I could in theory wait for the existence of a cell with a particular name, that\'92s something that as far as I can tell would invoke the UI Automation timeout feature, but in this particular case that wouldn\'92t work. The cell name depends on the exact second the button was pressed, something I can\'92t guarantee will be the same if I also attempt to capture the time for myself in a separate variable. (It would work most of the time\'85) But since I don\'92t have anything to hang a timeout off of, every so often, my row count check occurs before the business of adding the new row is complete, leading to a mysterious test failure. In order to be completely sure, I needed to add my own polling:\
+\pard\pardeftab720
+
+\f2 \cf2 var oldCount = tableView.cells().length\
+var expectedCount = oldCount + 1\
+\
+addButton.tap()\
+\
+var newCount\
+    \
+for (var i = 0; i < 12; i++) \{\
+    newCount = tableView.cells().length\
+        \
+    if (newCount == expectedCount) \{\
+        UIALogger.logPass("Added entry correctly")\
+        break\
+    \}\
+    \
+    UIATarget.localTarget().delay(.25)\
+    UIALogger.logDebug("Delaying...")\
+\}\
+    \
+if (newCount != expectedCount) \{\
+    UIALogger.logFail("Pressing Add Entry (plus) button should result in " + expectedCount + " rows, but instead resulted in " + newCount + " rows")\
+\}\
+\pard\pardeftab720\sa300
+
+\f1 \cf2 \
+Extra, messy timeout logic is something I talked about in my podcast episode, and it\'92s disappointing to find the same issue here with no elegant solutions.\
+The same holds true for the \'93delete row\'94 test; because I\'92m comparing row counts with no timeout, it fails every so often, so I added a similar delaying loop.\
+All of this code is available in my {\field{\*\fldinst{HYPERLINK "http://github.com/apontious/Automatic-for-the-People"}}{\fldrslt \cf3 \ul \ulc3 \'93Automatic for the People\'94}} GitHub project.\
+
+\b Other Annoyances
+\b0 \uc0\u8232 There were a few other things that annoyed me as I worked on this.\
+Instruments has this concept of \'93importing\'94 a test script, a state of affairs where Instruments ill-advisedly owns the file. If you change it elsewhere, you\'92ll be prompted in Instruments to revert to that version or use the Instruments version each time you start testing, even though Instruments shouldn\'92t have made any of its own changes. I see no reason for this, and it gets extremely tedious to keep clicking the \'93Revert\'94 button each time you run the script again. It\'92s obvious that the authors of this feature did not expect the script to be under active development during testing. ({\field{\*\fldinst{HYPERLINK "http://openradar.appspot.com/radar?id=2325401"}}{\fldrslt \cf3 \ul \ulc3 rdar://2325401}})\
+There\'92s no way for the script to tell Instruments that it\'92s done, so Instruments keeps running forever once the tests have finished. You have to stop it manually each time yourself. The documentation even mentions this, but that doesn\'92t make it right. ({\field{\*\fldinst{HYPERLINK "http://openradar.appspot.com/radar?id=2326401"}}{\fldrslt \cf3 \ul \ulc3 rdar://2326401}})\
+
+\b The Bigger Problem
+\b0 \uc0\u8232 That said, I can\'92t really complain at the low level. UI Automation gives you the tools you need to run these tests successfully.\
+But there are two bigger issues.\
+The first is something I touched on in the podcast: such simple cases as these are exactly the sorts of things that are never going to fail. Or at least that never fail in my experience. And if you spend a lot of time writing tests that will never fail, are they really worth it? The only time I\'92ve found simple tests to be useful is when you can use them during the initial development to run through a bunch of cases that you could never try by hand. That may be a worthwhile use of UI Automation as well, time will tell.\
+The second is that the UI failures I have seen involve aspects of the user interface that UI Animation can\'92t measure.\
+In one case, I had a table view that, due to a change I made, began to stutter when it scrolled. As far as I can tell, there is no \'93is scrolling smoothly\'94 property of the UIAScrollView accessibility element. I can\'92t even imagine how they would implement it. In the 2010 WWDC session, they mention using other instruments in concert with the automation instrument to track down performance issues, but that requires a person to notice the problem first.\
+I\'92m going to keep playing around with it, it\'92s got a lot of potential. But even though I titled my podcast {\field{\*\fldinst{HYPERLINK "http://www.edgecasesshow.com/06-you-cant-run-a-script-to-test-feel.html"}}{\fldrslt \cf3 \ul \ulc3 \'93You Can\'92t Run a Script to Test Feel\'94}} without knowing about UI Automation, it seems to me that the sentiment still rings true.\
+\'a0\
+1. Thanks to {\field{\*\fldinst{HYPERLINK "http://benrimmington.com/"}}{\fldrslt \cf3 \ul \ulc3 Ben Rimmington}} for the links, and esp. for cracking the code to link to a specific WWDC session video!\
+2. Because, after all, you\'92re the friggin\'92 {\field{\*\fldinst{HYPERLINK "http://www.edgecasesshow.com/027-where-mogenerator-really-picks-it-up.html"}}{\fldrslt \cf3 Batman and Robin}} of Objective-C.}
